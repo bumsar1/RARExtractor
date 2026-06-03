@@ -4,46 +4,46 @@
   <img src="logo.png" width="160" alt="RAR Extractor logo">
 </p>
 
-A simple macOS drag-and-drop app for extracting RAR files. Drop one or more archives onto the window, preview their contents, and extract them all in parallel with a single click.
+<p align="center">
+  A simple macOS drag-and-drop app for extracting RAR files.
+</p>
 
-![macOS](https://img.shields.io/badge/macOS-12%2B-blue) ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
+<p align="center">
+  <a href="https://github.com/bumsar1/RARExtractor/releases/latest">
+    <img src="https://img.shields.io/github/v/release/bumsar1/RARExtractor?label=Download&style=for-the-badge&color=7c3aed" alt="Download">
+  </a>
+  &nbsp;
+  <img src="https://img.shields.io/badge/macOS-12%2B-black?style=for-the-badge" alt="macOS">
+  &nbsp;
+  <img src="https://img.shields.io/badge/Python-3.10%2B-black?style=for-the-badge" alt="Python">
+</p>
 
-## Features
-
-- Drag & drop one or multiple RAR files at once
-- Preview archive contents (files and folders) before extracting
-- Parallel extraction — all archives extracted simultaneously
-- Extracts into a folder next to the original file
-- Finder right-click integration via a Quick Action (Services menu)
-- Dark mode UI
-
-## Requirements
-
-- macOS 12 or later
-- [Homebrew](https://brew.sh)
-- Python 3.10+
+---
 
 ## Install
 
-```bash
-git clone https://github.com/bumsar1/RARExtractor.git
-cd RARExtractor
-./install.sh
-```
+1. Download **[RAR_Extractor.dmg](https://github.com/bumsar1/RARExtractor/releases/latest)** from the latest release
+2. Open the DMG and drag **RAR Extractor** into your Applications folder
+3. Launch the app — it will install any missing dependencies automatically on first run
 
-The install script will:
-1. Install `unar` via Homebrew (the extraction engine)
-2. Install the `tkinterdnd2` Python package
-3. Build `RAR Extractor.app` in the `RARExtractor` folder
-4. Install a Finder Quick Action (right-click → Services → RAR Extractor)
+> **First launch:** A setup window appears if anything is missing (unar, Python packages). Click **Install automatically** and the app handles the rest — no Terminal needed.
 
-## Usage
+---
 
-**Drag & drop app** — open `RAR Extractor.app`, drop RAR files into the window, and click **Extract**.
+## Features
 
-**Right-click** — right-click any `.rar` file in Finder → Services → **RAR Extractor**. The archive is extracted silently and a notification appears when done.
+- **Drag & drop** — drop one or multiple RAR files at once
+- **Preview** — see the full file tree inside each archive before extracting
+- **Parallel extraction** — all archives extracted simultaneously
+- **Password support** — detects encrypted RARs and prompts for the password
+- **Reveal in Finder** — opens the extracted folder when done (or double-click a row)
+- **Clear queue** — remove all archives and start over
+- **Right-click integration** — right-click any `.rar` file in Finder → Services → **RAR Extractor**
+- **Dark mode UI**
 
-## How extraction works
+---
+
+## How it works
 
 Each archive is extracted into a new folder placed next to the original file:
 
@@ -54,3 +54,11 @@ Downloads/
     file1.txt
     file2.png
 ```
+
+---
+
+## Requirements
+
+- macOS 12 or later
+- Python 3.10+
+- [Homebrew](https://brew.sh) (installed automatically if missing)
