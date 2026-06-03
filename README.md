@@ -1,5 +1,9 @@
 # RAR Extractor
 
+<p align="center">
+  <img src="logo.png" width="160" alt="RAR Extractor logo">
+</p>
+
 A simple macOS drag-and-drop app for extracting RAR files. Drop one or more archives onto the window, preview their contents, and extract them all in parallel with a single click.
 
 ![macOS](https://img.shields.io/badge/macOS-12%2B-blue) ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)

@@ -144,14 +144,27 @@ class App:
     # ── Layout ────────────────────────────────────────────────────────────
 
     def _build(self):
+        # Logo header
+        logo_path = Path(__file__).parent / "logo.png"
+        self._logo_img = None
+        if logo_path.exists():
+            try:
+                raw = tk.PhotoImage(file=str(logo_path))
+                # logo is 1254px — subsample to ~104px
+                self._logo_img = raw.subsample(12, 12)
+                tk.Label(self.root, image=self._logo_img,
+                         bg=BG, pady=10).pack()
+            except Exception:
+                pass
+
         # Drop zone
         self.zone = tk.Label(
             self.root,
-            text="📦   Drop RAR files here  —  or click to browse",
+            text="Drop RAR files here  —  or click to browse",
             font=(FONT, 13), bg=ZONE_BG, fg=DIM,
             cursor="hand2", pady=16,
         )
-        self.zone.pack(fill="x", padx=14, pady=(14, 8))
+        self.zone.pack(fill="x", padx=14, pady=(0, 8))
         self.zone.bind("<Button-1>", self._browse)
 
         # Treeview
