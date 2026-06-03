@@ -151,6 +151,17 @@ class App:
             try:
                 from PIL import Image, ImageTk
                 img = Image.open(str(logo_path)).convert("RGBA")
+                # Remove black/near-black background
+                try:
+                    import numpy as np
+                    arr = np.array(img)
+                    mask = (arr[:,:,0] < 30) & (arr[:,:,1] < 30) & (arr[:,:,2] < 30)
+                    arr[mask, 3] = 0
+                    img = Image.fromarray(arr)
+                except ImportError:
+                    data = [(r, g, b, 0) if r < 30 and g < 30 and b < 30 else (r, g, b, a)
+                            for r, g, b, a in img.getdata()]
+                    img.putdata(data)
                 img = img.resize((110, 110), Image.LANCZOS)
                 self._logo_img = ImageTk.PhotoImage(img)
                 tk.Label(self.root, image=self._logo_img,
