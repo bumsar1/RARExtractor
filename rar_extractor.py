@@ -1,13 +1,192 @@
 #!/usr/bin/env python3
 """RAR Extractor — macOS drag & drop RAR extractor"""
 
-import tkinter as tk
-from tkinter import ttk, filedialog, simpledialog
+import os
+import shutil
 import subprocess
+import sys
 import threading
-import queue
-import json
+import tkinter as tk
+from tkinter import ttk
 from pathlib import Path
+
+
+# ── Dependency setup (runs before the main app) ───────────────────────────────
+
+BG_S   = "#1c1c1e"
+FG_S   = "#ebebf5"
+DIM_S  = "#8e8e93"
+OK_S   = "#30d158"
+ERR_S  = "#ff453a"
+BTN_S  = "#0a84ff"
+FONT_S = "Helvetica"
+
+
+def _has_brew():
+    return bool(shutil.which("brew") or
+                Path("/opt/homebrew/bin/brew").exists() or
+                Path("/usr/local/bin/brew").exists())
+
+
+def _missing_deps():
+    missing = {}
+    if not (shutil.which("unar") or Path("/opt/homebrew/bin/unar").exists()):
+        missing["unar"] = "brew"
+    try:
+        import tkinterdnd2  # noqa: F401
+    except ImportError:
+        missing["tkinterdnd2"] = "pip"
+    try:
+        from PIL import Image  # noqa: F401
+    except ImportError:
+        missing["Pillow"] = "pip"
+    return missing
+
+
+class SetupWindow:
+    """First-run installer shown when dependencies are missing."""
+
+    def __init__(self, missing: dict):
+        self.missing = missing
+        self.root = tk.Tk()
+        self.root.title("RAR Extractor — Setup")
+        self.root.geometry("480x380")
+        self.root.resizable(False, False)
+        self.root.configure(bg=BG_S)
+        self._build()
+
+    def _build(self):
+        tk.Label(self.root, text="Welcome to RAR Extractor",
+                 font=(FONT_S, 16, "bold"), bg=BG_S, fg=FG_S).pack(pady=(24, 4))
+        tk.Label(self.root,
+                 text="A few tools need to be installed before you can use the app.",
+                 font=(FONT_S, 12), bg=BG_S, fg=DIM_S, wraplength=400).pack(pady=(0, 16))
+
+        # Missing items list
+        for name, kind in self.missing.items():
+            row = tk.Frame(self.root, bg="#2c2c2e", pady=6)
+            row.pack(fill="x", padx=24, pady=3)
+            icon = "🍺" if kind == "brew" else "🐍"
+            tk.Label(row, text=f"  {icon}  {name}",
+                     font=(FONT_S, 12), bg="#2c2c2e", fg=FG_S,
+                     anchor="w").pack(side="left", padx=8)
+            tk.Label(row, text=f"{'brew install' if kind == 'brew' else 'pip install'} {name}  ",
+                     font=("Menlo", 11), bg="#2c2c2e", fg=DIM_S,
+                     anchor="e").pack(side="right")
+
+        # Output log
+        self.log = tk.Text(self.root, height=6, bg="#2c2c2e", fg=FG_S,
+                           font=("Menlo", 10), relief="flat",
+                           state="disabled", wrap="word")
+        self.log.pack(fill="x", padx=24, pady=(14, 0))
+
+        # Buttons
+        bar = tk.Frame(self.root, bg=BG_S)
+        bar.pack(fill="x", padx=24, pady=12)
+
+        self.status_lbl = tk.Label(bar, text="", font=(FONT_S, 11),
+                                   bg=BG_S, fg=DIM_S, anchor="w")
+        self.status_lbl.pack(side="left", expand=True, fill="x")
+
+        self.btn = tk.Button(
+            bar, text="Install automatically",
+            font=(FONT_S, 13, "bold"),
+            bg=BTN_S, fg="white", relief="flat",
+            padx=18, pady=8, cursor="hand2",
+            command=self._install,
+        )
+        self.btn.pack(side="right")
+
+        if not _has_brew():
+            self._set_status(
+                "⚠️  Homebrew not found — click Install to set it up too", ERR_S)
+
+    def _append_log(self, text: str):
+        self.root.after(0, lambda: (
+            self.log.configure(state="normal"),
+            self.log.insert("end", text),
+            self.log.see("end"),
+            self.log.configure(state="disabled"),
+        ))
+
+    def _set_status(self, msg: str, color: str = DIM_S):
+        self.root.after(0, lambda: self.status_lbl.configure(text=msg, fg=color))
+
+    def _install(self):
+        self.btn.configure(state="disabled", text="Installing …")
+        threading.Thread(target=self._run_install, daemon=True).start()
+
+    def _run_install(self):
+        env = {**os.environ, "PATH": "/opt/homebrew/bin:/usr/local/bin:" + os.environ.get("PATH", "")}
+        ok = True
+
+        # Install Homebrew if missing
+        if not _has_brew():
+            self._set_status("Installing Homebrew …", DIM_S)
+            self._append_log("▶ Installing Homebrew...\n")
+            r = subprocess.run(
+                '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+                shell=True, capture_output=True, text=True, env=env,
+            )
+            self._append_log(r.stdout[-800:] or r.stderr[-800:])
+            if r.returncode != 0:
+                self._set_status("Homebrew install failed — try running install.sh manually", ERR_S)
+                self.root.after(0, lambda: self.btn.configure(state="normal", text="Retry"))
+                return
+
+        # brew packages
+        brew_pkgs = [n for n, t in self.missing.items() if t == "brew"]
+        for pkg in brew_pkgs:
+            self._set_status(f"Installing {pkg} …", DIM_S)
+            self._append_log(f"▶ brew install {pkg}\n")
+            r = subprocess.run(["brew", "install", pkg],
+                               capture_output=True, text=True, env=env)
+            self._append_log(r.stdout[-400:] or r.stderr[-400:])
+            if r.returncode != 0:
+                ok = False
+                self._append_log(f"✗ Failed to install {pkg}\n")
+
+        # pip packages
+        pip_pkgs = [n for n, t in self.missing.items() if t == "pip"]
+        if pip_pkgs:
+            self._set_status("Installing Python packages …", DIM_S)
+            self._append_log(f"▶ pip install {' '.join(pip_pkgs)}\n")
+            r = subprocess.run(
+                [sys.executable, "-m", "pip", "install",
+                 "--quiet", "--break-system-packages"] + pip_pkgs,
+                capture_output=True, text=True, env=env,
+            )
+            self._append_log(r.stdout or r.stderr or "Done.\n")
+            if r.returncode != 0:
+                ok = False
+
+        if ok:
+            self._set_status("✓ All done! Launching app …", OK_S)
+            self._append_log("\n✓ Setup complete — starting RAR Extractor\n")
+            self.root.after(1200, self._restart)
+        else:
+            self._set_status("Some installs failed — check the log above", ERR_S)
+            self.root.after(0, lambda: self.btn.configure(state="normal", text="Retry"))
+
+    def _restart(self):
+        self.root.destroy()
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    def run(self):
+        self.root.mainloop()
+
+
+def run_setup_if_needed():
+    missing = _missing_deps()
+    if missing:
+        SetupWindow(missing).run()
+
+
+# ── Main app imports (safe after setup) ───────────────────────────────────────
+
+import json  # noqa: E402
+import queue  # noqa: E402
+from tkinter import filedialog, simpledialog  # noqa: E402
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -432,4 +611,5 @@ class App:
 
 
 if __name__ == "__main__":
+    run_setup_if_needed()
     App().run()
