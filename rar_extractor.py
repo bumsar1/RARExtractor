@@ -292,6 +292,19 @@ class App:
             self.root.dnd_bind("<<DragEnter>>", lambda e: self._highlight(True))
             self.root.dnd_bind("<<DragLeave>>", lambda e: self._highlight(False))
 
+        # Handle "Open With" Apple Events from Finder
+        try:
+            self.root.createcommand("::tk::mac::OpenDocument", self._open_document)
+        except Exception:
+            pass
+
+        # Handle files passed as command-line arguments (open from terminal or script)
+        if len(sys.argv) > 1:
+            rars = [Path(p) for p in sys.argv[1:]
+                    if Path(p).suffix.lower() == ".rar" and Path(p).exists()]
+            if rars:
+                self.root.after(200, lambda: self._add_files(rars))
+
     # ── Styles ────────────────────────────────────────────────────────────
 
     def _apply_styles(self):
@@ -406,6 +419,16 @@ class App:
             state="disabled", command=self._extract_all,
         )
         self.extract_btn.pack(side="right")
+
+    # ── Open With / Apple Events ──────────────────────────────────────────
+
+    def _open_document(self, *args):
+        """Called by macOS when files are opened via 'Open With' in Finder."""
+        rars = [Path(p) for p in args if Path(p).suffix.lower() == ".rar" and Path(p).exists()]
+        if rars:
+            self.root.lift()
+            self.root.focus_force()
+            self._add_files(rars)
 
     # ── Drag & browse ─────────────────────────────────────────────────────
 
