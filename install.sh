@@ -23,8 +23,8 @@ fi
 
 # ── Python pakker ─────────────────────────────────────────────────────────────
 echo "Installerer Python-pakker..."
-pip3 install --quiet --break-system-packages tkinterdnd2 2>/dev/null \
-    || pip3 install --quiet tkinterdnd2
+pip3 install --quiet --break-system-packages tkinterdnd2 Pillow 2>/dev/null \
+    || pip3 install --quiet tkinterdnd2 Pillow
 
 echo ""
 echo "✓ Alle afhængigheder installeret!"

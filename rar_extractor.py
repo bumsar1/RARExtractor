@@ -149,9 +149,10 @@ class App:
         self._logo_img = None
         if logo_path.exists():
             try:
-                raw = tk.PhotoImage(file=str(logo_path))
-                # logo is 1254px — subsample to ~104px
-                self._logo_img = raw.subsample(12, 12)
+                from PIL import Image, ImageTk
+                img = Image.open(str(logo_path)).convert("RGBA")
+                img = img.resize((110, 110), Image.LANCZOS)
+                self._logo_img = ImageTk.PhotoImage(img)
                 tk.Label(self.root, image=self._logo_img,
                          bg=BG, pady=10).pack()
             except Exception:
