@@ -458,6 +458,10 @@ class App:
         s.configure("T.Treeview.Heading",
                      background=ZONE_HI, foreground=DIM,
                      relief="flat", font=(FONT, 11))
+        s.map("T.Treeview.Heading",
+              background=[("active", ZONE_HI), ("pressed", ZONE_HI)],
+              foreground=[("active", DIM),     ("pressed", DIM)],
+              relief=[("active", "flat"),      ("pressed", "flat")])
         s.map("T.Treeview",
               background=[("selected", BTN_CLR)],
               foreground=[("selected", "white")])
