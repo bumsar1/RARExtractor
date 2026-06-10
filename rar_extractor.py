@@ -195,11 +195,17 @@ def _install_quick_action():
     <key>NSServices</key>
     <array>
         <dict>
+            <key>NSBackgroundColorName</key><string>background</string>
+            <key>NSIconName</key><string>NSActionTemplate</string>
             <key>NSMenuItem</key>
             <dict><key>default</key><string>RAR Extractor</string></dict>
             <key>NSMessage</key><string>runWorkflowAsService</string>
+            <key>NSRequiredContext</key>
+            <dict>
+                <key>NSApplicationIdentifier</key><string>com.apple.finder</string>
+            </dict>
             <key>NSSendFileTypes</key>
-            <array><string>public.data</string></array>
+            <array><string>public.item</string></array>
         </dict>
     </array>
 </dict>
@@ -307,14 +313,25 @@ def _install_quick_action():
     <key>connectors</key><dict/>
     <key>workflowMetaData</key>
     <dict>
+        <key>backgroundColorName</key><string>background</string>
+        <key>inputTypeIdentifier</key>
+        <string>com.apple.Automator.fileSystemObject</string>
+        <key>outputTypeIdentifier</key>
+        <string>com.apple.Automator.nothing</string>
+        <key>presentationModes</key><integer>1</integer>
+        <key>processesInput</key><integer>0</integer>
+        <key>serviceApplicationBundleID</key><string>com.apple.finder</string>
+        <key>serviceApplicationPath</key>
+        <string>/System/Library/CoreServices/Finder.app</string>
         <key>serviceInputTypeIdentifier</key>
         <string>com.apple.Automator.fileSystemObject</string>
         <key>serviceOutputTypeIdentifier</key>
         <string>com.apple.Automator.nothing</string>
         <key>serviceProcessesInput</key><integer>0</integer>
         <key>systemImageName</key><string>NSActionTemplate</string>
+        <key>useAutomaticInputType</key><integer>0</integer>
         <key>workflowTypeIdentifier</key>
-        <string>com.apple.Automator.servicesMenu</string>
+        <string>com.apple.Automator.quickAction</string>
     </dict>
 </dict>
 </plist>
