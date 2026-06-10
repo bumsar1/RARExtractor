@@ -32,14 +32,14 @@
 
 ## Features
 
-- **Drag & drop** — drop one or multiple RAR files at once
-- **Preview** — see the full file tree inside each archive before extracting
-- **Parallel extraction** — all archives extracted simultaneously
-- **Password support** — detects encrypted RARs and prompts for the password
+- **Drag & drop** — drop one or multiple archives at once (RAR · ZIP · 7Z)
+- **Preview** — see the full file tree and total size inside each archive before extracting
+- **Parallel extraction** — all archives extracted simultaneously, with progress bar
+- **Password support** — detects encrypted archives and prompts for the password
 - **Reveal in Finder** — opens the extracted folder when done (or double-click a row)
-- **Clear queue** — remove all archives and start over
-- **Right-click integration** — right-click any `.rar` file in Finder → Services → **RAR Extractor**
-- **Dark mode UI**
+- **Queue management** — right-click an archive to remove it, or Clear to start over
+- **Right-click integration** — right-click an archive in Finder → Services → **RAR Extractor**
+- **Dark mode UI** with purple accent matching the logo
 
 ---
 
