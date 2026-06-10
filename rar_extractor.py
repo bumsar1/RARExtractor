@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
@@ -212,26 +213,14 @@ def _install_quick_action():
 </plist>
 """
 
-    # Precompute $name so no command substitution is needed inside the
-    # osascript string (escaping it correctly through bash is fragile).
+    # Finder runs Quick Actions in a sandboxed Workflow Runner that is
+    # often denied file access silently (no TCC prompt for shell scripts),
+    # so extracting here "does nothing". Instead, hand the files to the
+    # app — it has proper permissions and visible feedback — and leave a
+    # short-lived marker so the app knows to start extracting immediately.
     shell_script = (
-        'export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"\n'
-        'for f in "$@"; do\n'
-        '    ext="${f##*.}"\n'
-        '    case "$(echo "$ext" | tr A-Z a-z)" in\n'
-        '        rar|zip|7z) ;;\n'
-        '        *) continue ;;\n'
-        '    esac\n'
-        '    stem="${f%.*}"\n'
-        '    name=$(basename "$stem")\n'
-        '    mkdir -p "$stem"\n'
-        '    if unar -o "$stem" -f "$f" > /tmp/rar_extractor.log 2>&1; then\n'
-        '        osascript -e "display notification \\"Extracted: $name/\\" with title \\"RAR Extractor\\" sound name \\"Glass\\""\n'
-        '    else\n'
-        '        err=$(tail -1 /tmp/rar_extractor.log)\n'
-        '        osascript -e "display notification \\"$err\\" with title \\"RAR Extractor\\""\n'
-        '    fi\n'
-        'done\n'
+        'touch "/tmp/rar_extractor_auto_$(id -u)"\n'
+        'open -b dk.cadesign.rar-extractor "$@" 2>/dev/null || open -a "RAR Extractor" "$@"\n'
     )
 
     document_wflow = f"""\
@@ -552,6 +541,7 @@ class App:
         self._pw_lock = threading.Lock()         # serialize password prompts
         self._pw_queue: queue.Queue = queue.Queue()
         self._extracting = False
+        self._auto_extract = False   # set when opened via the Quick Action
 
         self._apply_styles()
         self._build()
@@ -572,6 +562,8 @@ class App:
         if len(sys.argv) > 1:
             archives = [Path(p) for p in sys.argv[1:] if is_archive(Path(p))]
             if archives:
+                if self._consume_auto_marker():
+                    self._auto_extract = True
                 self.root.after(200, lambda: self._add_files(archives))
 
     # ── Styles ────────────────────────────────────────────────────────────
@@ -721,9 +713,21 @@ class App:
 
     # ── Open With / Apple Events ──────────────────────────────────────────
 
+    def _consume_auto_marker(self) -> bool:
+        """True if the Quick Action just launched us (marker file < 20s old)."""
+        marker = Path(f"/tmp/rar_extractor_auto_{os.getuid()}")
+        try:
+            fresh = (time.time() - marker.stat().st_mtime) < 20
+            marker.unlink()
+            return fresh
+        except OSError:
+            return False
+
     def _open_document(self, *args):
         archives = [Path(p) for p in args if is_archive(Path(p))]
         if archives:
+            if self._consume_auto_marker():
+                self._auto_extract = True
             self.root.lift()
             self.root.focus_force()
             self._add_files(archives)
@@ -840,6 +844,16 @@ class App:
         self.tree.item(iid, values=(f"{file_count} {noun} · {fmt_size(total_size)}",),
                        open=True, tags=())
         self._refresh_buttons()
+
+        # Quick Action launch: start extracting once every archive is read
+        if self._auto_extract and not self._extracting:
+            all_ready = all(
+                self.tree.item(i, "values") != ("Reading …",)
+                for i in self._queue.values()
+            )
+            if all_ready:
+                self._auto_extract = False
+                self._extract_all()
 
     # ── Extract ───────────────────────────────────────────────────────────
 
