@@ -227,6 +227,7 @@ def _install_quick_action():
         '    mkdir -p "$stem"\n'
         '    if unar -o "$stem" -f "$f" > /tmp/rar_extractor.log 2>&1; then\n'
         '        osascript -e "display notification \\"Extracted: $name/\\" with title \\"RAR Extractor\\" sound name \\"Glass\\""\n'
+        '        open "$stem"\n'
         '    else\n'
         '        rmdir "$stem" 2>/dev/null\n'
         '        fallback+=("$f")\n'
