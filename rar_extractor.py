@@ -196,15 +196,9 @@ def _install_quick_action():
     <key>NSServices</key>
     <array>
         <dict>
-            <key>NSBackgroundColorName</key><string>background</string>
-            <key>NSIconName</key><string>NSActionTemplate</string>
             <key>NSMenuItem</key>
             <dict><key>default</key><string>RAR Extractor</string></dict>
             <key>NSMessage</key><string>runWorkflowAsService</string>
-            <key>NSRequiredContext</key>
-            <dict>
-                <key>NSApplicationIdentifier</key><string>com.apple.finder</string>
-            </dict>
             <key>NSSendFileTypes</key>
             <array><string>public.item</string></array>
         </dict>
@@ -213,14 +207,35 @@ def _install_quick_action():
 </plist>
 """
 
-    # Finder runs Quick Actions in a sandboxed Workflow Runner that is
-    # often denied file access silently (no TCC prompt for shell scripts),
-    # so extracting here "does nothing". Instead, hand the files to the
-    # app — it has proper permissions and visible feedback — and leave a
-    # short-lived marker so the app knows to start extracting immediately.
+    # Registered as a legacy Services-menu workflow on purpose: those run
+    # unsandboxed, so unar can extract in place. The quickAction type runs
+    # in a sandboxed Workflow Runner that macOS silently denies file
+    # access, which made extraction "do nothing". Archives that still
+    # fail here (wrong password, odd permissions) fall back to opening
+    # the app, which auto-extracts with visible feedback.
     shell_script = (
-        'touch "/tmp/rar_extractor_auto_$(id -u)"\n'
-        'open -b dk.cadesign.rar-extractor "$@" 2>/dev/null || open -a "RAR Extractor" "$@"\n'
+        'export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"\n'
+        'fallback=()\n'
+        'for f in "$@"; do\n'
+        '    ext="${f##*.}"\n'
+        '    case "$(echo "$ext" | tr A-Z a-z)" in\n'
+        '        rar|zip|7z) ;;\n'
+        '        *) continue ;;\n'
+        '    esac\n'
+        '    stem="${f%.*}"\n'
+        '    name=$(basename "$stem")\n'
+        '    mkdir -p "$stem"\n'
+        '    if unar -o "$stem" -f "$f" > /tmp/rar_extractor.log 2>&1; then\n'
+        '        osascript -e "display notification \\"Extracted: $name/\\" with title \\"RAR Extractor\\" sound name \\"Glass\\""\n'
+        '    else\n'
+        '        rmdir "$stem" 2>/dev/null\n'
+        '        fallback+=("$f")\n'
+        '    fi\n'
+        'done\n'
+        'if [ ${#fallback[@]} -gt 0 ]; then\n'
+        '    touch "/tmp/rar_extractor_auto_$(id -u)"\n'
+        '    open -b dk.cadesign.rar-extractor "${fallback[@]}" 2>/dev/null || open -a "RAR Extractor" "${fallback[@]}"\n'
+        'fi\n'
     )
 
     document_wflow = f"""\
@@ -302,25 +317,14 @@ def _install_quick_action():
     <key>connectors</key><dict/>
     <key>workflowMetaData</key>
     <dict>
-        <key>backgroundColorName</key><string>background</string>
-        <key>inputTypeIdentifier</key>
-        <string>com.apple.Automator.fileSystemObject</string>
-        <key>outputTypeIdentifier</key>
-        <string>com.apple.Automator.nothing</string>
-        <key>presentationModes</key><integer>1</integer>
-        <key>processesInput</key><integer>0</integer>
-        <key>serviceApplicationBundleID</key><string>com.apple.finder</string>
-        <key>serviceApplicationPath</key>
-        <string>/System/Library/CoreServices/Finder.app</string>
         <key>serviceInputTypeIdentifier</key>
         <string>com.apple.Automator.fileSystemObject</string>
         <key>serviceOutputTypeIdentifier</key>
         <string>com.apple.Automator.nothing</string>
         <key>serviceProcessesInput</key><integer>0</integer>
         <key>systemImageName</key><string>NSActionTemplate</string>
-        <key>useAutomaticInputType</key><integer>0</integer>
         <key>workflowTypeIdentifier</key>
-        <string>com.apple.Automator.quickAction</string>
+        <string>com.apple.Automator.servicesMenu</string>
     </dict>
 </dict>
 </plist>
