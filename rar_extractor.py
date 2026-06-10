@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""RAR Extractor — macOS drag & drop RAR extractor"""
+"""RAR Extractor — macOS drag & drop archive extractor"""
 
 import os
 import shutil
@@ -9,18 +9,31 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
+
+
+# ── Theme ─────────────────────────────────────────────────────────────────────
+
+BG        = "#161618"   # window background
+CARD      = "#242428"   # panels / tree background
+CARD_HI   = "#2f2f35"   # hover / headers
+BORDER    = "#3a3a42"
+FG        = "#ececf1"
+DIM       = "#8e8e93"
+OK_CLR    = "#30d158"
+ERR_CLR   = "#ff453a"
+ACCENT    = "#8b5cf6"   # logo purple
+ACCENT_HI = "#7445f5"
+FONT      = "Helvetica Neue"
+
+SUPPORTED = {".rar", ".zip", ".7z"}
+
+
+def is_archive(p: Path) -> bool:
+    return p.suffix.lower() in SUPPORTED and p.exists()
 
 
 # ── Dependency setup (runs before the main app) ───────────────────────────────
-
-BG_S   = "#1c1c1e"
-FG_S   = "#ebebf5"
-DIM_S  = "#8e8e93"
-OK_S   = "#30d158"
-ERR_S  = "#ff453a"
-BTN_S  = "#0a84ff"
-FONT_S = "Helvetica"
-
 
 def _has_brew():
     return bool(shutil.which("brew") or
@@ -52,46 +65,43 @@ class SetupWindow:
         self.root.title("RAR Extractor — Setup")
         self.root.geometry("480x380")
         self.root.resizable(False, False)
-        self.root.configure(bg=BG_S)
+        self.root.configure(bg=BG)
         self._build()
 
     def _build(self):
         tk.Label(self.root, text="Welcome to RAR Extractor",
-                 font=(FONT_S, 16, "bold"), bg=BG_S, fg=FG_S).pack(pady=(24, 4))
+                 font=(FONT, 16, "bold"), bg=BG, fg=FG).pack(pady=(24, 4))
         tk.Label(self.root,
                  text="A few tools need to be installed before you can use the app.",
-                 font=(FONT_S, 12), bg=BG_S, fg=DIM_S, wraplength=400).pack(pady=(0, 16))
+                 font=(FONT, 12), bg=BG, fg=DIM, wraplength=400).pack(pady=(0, 16))
 
-        # Missing items list
         for name, kind in self.missing.items():
-            row = tk.Frame(self.root, bg="#2c2c2e", pady=6)
+            row = tk.Frame(self.root, bg=CARD, pady=6)
             row.pack(fill="x", padx=24, pady=3)
             icon = "🍺" if kind == "brew" else "🐍"
             tk.Label(row, text=f"  {icon}  {name}",
-                     font=(FONT_S, 12), bg="#2c2c2e", fg=FG_S,
+                     font=(FONT, 12), bg=CARD, fg=FG,
                      anchor="w").pack(side="left", padx=8)
             tk.Label(row, text=f"{'brew install' if kind == 'brew' else 'pip install'} {name}  ",
-                     font=("Menlo", 11), bg="#2c2c2e", fg=DIM_S,
+                     font=("Menlo", 11), bg=CARD, fg=DIM,
                      anchor="e").pack(side="right")
 
-        # Output log
-        self.log = tk.Text(self.root, height=6, bg="#2c2c2e", fg=FG_S,
+        self.log = tk.Text(self.root, height=6, bg=CARD, fg=FG,
                            font=("Menlo", 10), relief="flat",
                            state="disabled", wrap="word")
         self.log.pack(fill="x", padx=24, pady=(14, 0))
 
-        # Buttons
-        bar = tk.Frame(self.root, bg=BG_S)
+        bar = tk.Frame(self.root, bg=BG)
         bar.pack(fill="x", padx=24, pady=12)
 
-        self.status_lbl = tk.Label(bar, text="", font=(FONT_S, 11),
-                                   bg=BG_S, fg=DIM_S, anchor="w")
+        self.status_lbl = tk.Label(bar, text="", font=(FONT, 11),
+                                   bg=BG, fg=DIM, anchor="w")
         self.status_lbl.pack(side="left", expand=True, fill="x")
 
         self.btn = tk.Button(
             bar, text="Install automatically",
-            font=(FONT_S, 13, "bold"),
-            bg=BTN_S, fg="white", relief="flat",
+            font=(FONT, 13, "bold"),
+            bg=ACCENT, fg="white", relief="flat",
             padx=18, pady=8, cursor="hand2",
             command=self._install,
         )
@@ -99,7 +109,7 @@ class SetupWindow:
 
         if not _has_brew():
             self._set_status(
-                "⚠️  Homebrew not found — click Install to set it up too", ERR_S)
+                "⚠️  Homebrew not found — click Install to set it up too", ERR_CLR)
 
     def _append_log(self, text: str):
         self.root.after(0, lambda: (
@@ -109,7 +119,7 @@ class SetupWindow:
             self.log.configure(state="disabled"),
         ))
 
-    def _set_status(self, msg: str, color: str = DIM_S):
+    def _set_status(self, msg: str, color: str = DIM):
         self.root.after(0, lambda: self.status_lbl.configure(text=msg, fg=color))
 
     def _install(self):
@@ -120,9 +130,8 @@ class SetupWindow:
         env = {**os.environ, "PATH": "/opt/homebrew/bin:/usr/local/bin:" + os.environ.get("PATH", "")}
         ok = True
 
-        # Install Homebrew if missing
         if not _has_brew():
-            self._set_status("Installing Homebrew …", DIM_S)
+            self._set_status("Installing Homebrew …", DIM)
             self._append_log("▶ Installing Homebrew...\n")
             r = subprocess.run(
                 '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
@@ -130,14 +139,13 @@ class SetupWindow:
             )
             self._append_log(r.stdout[-800:] or r.stderr[-800:])
             if r.returncode != 0:
-                self._set_status("Homebrew install failed — try running install.sh manually", ERR_S)
+                self._set_status("Homebrew install failed — try running install.sh manually", ERR_CLR)
                 self.root.after(0, lambda: self.btn.configure(state="normal", text="Retry"))
                 return
 
-        # brew packages
         brew_pkgs = [n for n, t in self.missing.items() if t == "brew"]
         for pkg in brew_pkgs:
-            self._set_status(f"Installing {pkg} …", DIM_S)
+            self._set_status(f"Installing {pkg} …", DIM)
             self._append_log(f"▶ brew install {pkg}\n")
             r = subprocess.run(["brew", "install", pkg],
                                capture_output=True, text=True, env=env)
@@ -146,10 +154,9 @@ class SetupWindow:
                 ok = False
                 self._append_log(f"✗ Failed to install {pkg}\n")
 
-        # pip packages
         pip_pkgs = [n for n, t in self.missing.items() if t == "pip"]
         if pip_pkgs:
-            self._set_status("Installing Python packages …", DIM_S)
+            self._set_status("Installing Python packages …", DIM)
             self._append_log(f"▶ pip install {' '.join(pip_pkgs)}\n")
             r = subprocess.run(
                 [sys.executable, "-m", "pip", "install",
@@ -161,11 +168,11 @@ class SetupWindow:
                 ok = False
 
         if ok:
-            self._set_status("✓ All done! Launching app …", OK_S)
+            self._set_status("✓ All done! Launching app …", OK_CLR)
             self._append_log("\n✓ Setup complete — starting RAR Extractor\n")
             self.root.after(1200, self._restart)
         else:
-            self._set_status("Some installs failed — check the log above", ERR_S)
+            self._set_status("Some installs failed — check the log above", ERR_CLR)
             self.root.after(0, lambda: self.btn.configure(state="normal", text="Retry"))
 
     def _restart(self):
@@ -177,14 +184,10 @@ class SetupWindow:
 
 
 def _install_quick_action():
-    """Create the Finder Quick Action (Service) if not already installed."""
+    """Create or update the Finder Quick Action (Service)."""
     service_dir = Path.home() / "Library/Services/RAR Extractor.workflow/Contents"
-    if (service_dir / "document.wflow").exists():
-        return  # already installed
 
-    service_dir.mkdir(parents=True, exist_ok=True)
-
-    (service_dir / "Info.plist").write_text("""\
+    info_plist = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -201,17 +204,23 @@ def _install_quick_action():
     </array>
 </dict>
 </plist>
-""")
+"""
 
-    # Shell script used inside the workflow — finds unar regardless of install path
+    # Precompute $name so no command substitution is needed inside the
+    # osascript string (escaping it correctly through bash is fragile).
     shell_script = (
         'export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"\n'
         'for f in "$@"; do\n'
-        '    [[ "${f##*.}" != "rar" ]] && [[ "${f##*.}" != "RAR" ]] && continue\n'
+        '    ext="${f##*.}"\n'
+        '    case "$(echo "$ext" | tr A-Z a-z)" in\n'
+        '        rar|zip|7z) ;;\n'
+        '        *) continue ;;\n'
+        '    esac\n'
         '    stem="${f%.*}"\n'
+        '    name=$(basename "$stem")\n'
         '    mkdir -p "$stem"\n'
         '    if unar -o "$stem" -f "$f" > /tmp/rar_extractor.log 2>&1; then\n'
-        '        osascript -e "display notification \\"Extracted: $(basename \\"$stem\\")/" with title \\"RAR Extractor\\" sound name \\"Glass\\""\n'
+        '        osascript -e "display notification \\"Extracted: $name/\\" with title \\"RAR Extractor\\" sound name \\"Glass\\""\n'
         '    else\n'
         '        err=$(tail -1 /tmp/rar_extractor.log)\n'
         '        osascript -e "display notification \\"$err\\" with title \\"RAR Extractor\\""\n'
@@ -219,7 +228,7 @@ def _install_quick_action():
         'done\n'
     )
 
-    (service_dir / "document.wflow").write_text(f"""\
+    document_wflow = f"""\
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -259,7 +268,7 @@ def _install_quick_action():
                 <key>ActionParameters</key>
                 <dict>
                     <key>COMMAND_STRING</key>
-                    <string>{shell_script}</string>
+                    <string>{xml_escape(shell_script)}</string>
                     <key>CheckedForUserDefaultShell</key><true/>
                     <key>inputMethod</key><integer>1</integer>
                     <key>shell</key><string>/bin/bash</string>
@@ -309,9 +318,21 @@ def _install_quick_action():
     </dict>
 </dict>
 </plist>
-""")
+"""
 
-    # Reload the services database
+    wflow_path = service_dir / "document.wflow"
+    # Overwrite when content changed so fixes reach users who installed
+    # an older (broken) version of the workflow.
+    try:
+        current = wflow_path.read_text()
+    except OSError:
+        current = ""
+    if current == document_wflow:
+        return
+
+    service_dir.mkdir(parents=True, exist_ok=True)
+    (service_dir / "Info.plist").write_text(info_plist)
+    wflow_path.write_text(document_wflow)
     subprocess.run(["/System/Library/CoreServices/pbs", "-update"],
                    capture_output=True)
 
@@ -327,24 +348,13 @@ def run_setup_if_needed():
 
 import json  # noqa: E402
 import queue  # noqa: E402
-from tkinter import filedialog, simpledialog  # noqa: E402
+from tkinter import filedialog  # noqa: E402
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
     HAS_DND = True
 except ImportError:
     HAS_DND = False
-
-BG       = "#1c1c1e"
-ZONE_BG  = "#2c2c2e"
-ZONE_HI  = "#3a3a3c"
-FG       = "#ebebf5"
-DIM      = "#8e8e93"
-OK_CLR   = "#30d158"
-ERR_CLR  = "#ff453a"
-BTN_CLR  = "#0a84ff"
-BTN2_CLR = "#3a3a3c"
-FONT     = "Helvetica"
 
 
 # ── Core logic ────────────────────────────────────────────────────────────────
@@ -374,15 +384,16 @@ def fmt_size(n):
     if not n:        return "—"
     if n < 1024:     return f"{n} B"
     if n < 1024**2:  return f"{n/1024:.1f} KB"
-    return f"{n/1024**2:.1f} MB"
+    if n < 1024**3:  return f"{n/1024**2:.1f} MB"
+    return f"{n/1024**3:.2f} GB"
 
 
 def _needs_password(output: str) -> bool:
     low = output.lower()
-    return any(w in low for w in ["password", "encrypted", "passphrase", "wrong password"])
+    return any(w in low for w in ["password", "encrypted", "passphrase"])
 
 
-def extract_rar(path: Path, password: str | None = None):
+def extract_archive(path: Path, password: str | None = None):
     """Returns (success, message, needs_password, output_dir)."""
     output_dir = path.parent / path.stem
     output_dir.mkdir(exist_ok=True)
@@ -392,13 +403,14 @@ def extract_rar(path: Path, password: str | None = None):
         return False, "unar not found — run: brew install unar", False, None
 
     if tool == "unar":
-        cmd = ["unar", "-o", str(output_dir), "-f", str(path)]
-        if password:
-            cmd = ["unar", "-p", password, "-o", str(output_dir), "-f", str(path)]
+        cmd = ["unar"] + (["-p", password] if password else []) + \
+              ["-o", str(output_dir), "-f", str(path)]
     elif tool == "unrar":
-        cmd = ["unrar", "x", "-y"] + ([f"-p{password}"] if password else []) + [str(path), str(output_dir) + "/"]
+        cmd = ["unrar", "x", "-y"] + ([f"-p{password}"] if password else []) + \
+              [str(path), str(output_dir) + "/"]
     else:
-        cmd = [tool, "x", str(path), f"-o{output_dir}", "-y"] + ([f"-p{password}"] if password else [])
+        cmd = [tool, "x", str(path), f"-o{output_dir}", "-y"] + \
+              ([f"-p{password}"] if password else [])
 
     r = subprocess.run(cmd, capture_output=True, text=True)
     out = r.stderr + r.stdout
@@ -406,7 +418,105 @@ def extract_rar(path: Path, password: str | None = None):
     if r.returncode == 0:
         return True, f"→ {output_dir.name}/", False, output_dir
 
+    # Don't leave an empty folder behind on failure
+    try:
+        output_dir.rmdir()
+    except OSError:
+        pass
     return False, out.strip()[:120], _needs_password(out), None
+
+
+# ── Widgets ───────────────────────────────────────────────────────────────────
+
+class DropZone(tk.Canvas):
+    """Dashed-border drop target that doubles as a browse button."""
+
+    def __init__(self, master, command, **kw):
+        super().__init__(master, bg=BG, highlightthickness=0,
+                         height=72, cursor="hand2", **kw)
+        self._command = command
+        self._active = False
+        self.bind("<Configure>", lambda e: self._redraw())
+        self.bind("<Button-1>", lambda e: self._command())
+        self.bind("<Enter>", lambda e: self.set_active(True))
+        self.bind("<Leave>", lambda e: self.set_active(False))
+
+    def set_active(self, on: bool):
+        self._active = on
+        self._redraw()
+
+    def _redraw(self):
+        self.delete("all")
+        w, h = self.winfo_width(), self.winfo_height()
+        if w < 10:
+            return
+        color = ACCENT if self._active else BORDER
+        fill  = CARD_HI if self._active else CARD
+        self.create_rectangle(3, 3, w - 3, h - 3,
+                              outline=color, dash=(5, 4), width=1.5,
+                              fill=fill)
+        self.create_text(w / 2, h / 2 - 9,
+                         text="Drop archives here — or click to browse",
+                         font=(FONT, 13), fill=FG if self._active else DIM)
+        self.create_text(w / 2, h / 2 + 13,
+                         text="RAR · ZIP · 7Z",
+                         font=(FONT, 10), fill=DIM)
+
+
+class PasswordDialog:
+    """Dark modal password prompt. Returns str or None."""
+
+    def __init__(self, parent, filename: str):
+        self.result = None
+        self.top = tk.Toplevel(parent)
+        self.top.title("Password required")
+        self.top.configure(bg=BG)
+        self.top.resizable(False, False)
+        self.top.transient(parent)
+
+        tk.Label(self.top, text="🔒  This archive is encrypted",
+                 font=(FONT, 13, "bold"), bg=BG, fg=FG).pack(padx=28, pady=(20, 2))
+        tk.Label(self.top, text=filename,
+                 font=(FONT, 11), bg=BG, fg=DIM).pack(padx=28)
+
+        self.entry = tk.Entry(self.top, show="•", width=28,
+                              font=(FONT, 13), bg=CARD, fg=FG,
+                              insertbackground=FG, relief="flat",
+                              highlightthickness=1,
+                              highlightbackground=BORDER,
+                              highlightcolor=ACCENT)
+        self.entry.pack(padx=28, pady=14, ipady=6)
+
+        bar = tk.Frame(self.top, bg=BG)
+        bar.pack(pady=(0, 16))
+        tk.Button(bar, text="Cancel", font=(FONT, 12),
+                  bg=CARD_HI, fg=FG, relief="flat", padx=14, pady=5,
+                  command=self._cancel).pack(side="left", padx=4)
+        tk.Button(bar, text="Extract", font=(FONT, 12, "bold"),
+                  bg=ACCENT, fg="white", relief="flat", padx=16, pady=5,
+                  command=self._ok).pack(side="left", padx=4)
+
+        self.top.bind("<Return>", lambda e: self._ok())
+        self.top.bind("<Escape>", lambda e: self._cancel())
+
+        # Center over parent
+        self.top.update_idletasks()
+        px, py = parent.winfo_rootx(), parent.winfo_rooty()
+        pw, ph = parent.winfo_width(), parent.winfo_height()
+        w, h = self.top.winfo_width(), self.top.winfo_height()
+        self.top.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 3}")
+
+        self.entry.focus_set()
+        self.top.grab_set()
+        parent.wait_window(self.top)
+
+    def _ok(self):
+        self.result = self.entry.get() or None
+        self.top.destroy()
+
+    def _cancel(self):
+        self.result = None
+        self.top.destroy()
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
@@ -415,14 +525,16 @@ class App:
     def __init__(self):
         self.root = TkinterDnD.Tk() if HAS_DND else tk.Tk()
         self.root.title("RAR Extractor")
-        self.root.geometry("560x520")
-        self.root.minsize(420, 360)
+        self.root.geometry("600x540")
+        self.root.minsize(460, 400)
         self.root.configure(bg=BG)
 
         self._queue: dict[Path, str] = {}        # path → tree iid
-        self._extracted: dict[Path, Path] = {}   # path → output_dir (successful only)
+        self._extracted: dict[Path, Path] = {}   # path → output_dir
         self._lock = threading.Lock()
+        self._pw_lock = threading.Lock()         # serialize password prompts
         self._pw_queue: queue.Queue = queue.Queue()
+        self._extracting = False
 
         self._apply_styles()
         self._build()
@@ -430,91 +542,88 @@ class App:
         if HAS_DND:
             self.root.drop_target_register(DND_FILES)
             self.root.dnd_bind("<<Drop>>",      self._on_drop)
-            self.root.dnd_bind("<<DragEnter>>", lambda e: self._highlight(True))
-            self.root.dnd_bind("<<DragLeave>>", lambda e: self._highlight(False))
+            self.root.dnd_bind("<<DragEnter>>", lambda e: self.zone.set_active(True))
+            self.root.dnd_bind("<<DragLeave>>", lambda e: self.zone.set_active(False))
 
-        # Handle "Open With" Apple Events from Finder
+        # "Open With" from Finder
         try:
             self.root.createcommand("::tk::mac::OpenDocument", self._open_document)
         except Exception:
             pass
 
-        # Handle files passed as command-line arguments (open from terminal or script)
+        # Files passed on the command line
         if len(sys.argv) > 1:
-            rars = [Path(p) for p in sys.argv[1:]
-                    if Path(p).suffix.lower() == ".rar" and Path(p).exists()]
-            if rars:
-                self.root.after(200, lambda: self._add_files(rars))
+            archives = [Path(p) for p in sys.argv[1:] if is_archive(Path(p))]
+            if archives:
+                self.root.after(200, lambda: self._add_files(archives))
 
     # ── Styles ────────────────────────────────────────────────────────────
 
     def _apply_styles(self):
         s = ttk.Style(self.root)
         s.theme_use("default")
+
         s.configure("T.Treeview",
-                     background=ZONE_BG, foreground=FG,
-                     fieldbackground=ZONE_BG, borderwidth=0,
-                     rowheight=24, font=(FONT, 12))
+                     background=CARD, foreground=FG,
+                     fieldbackground=CARD, borderwidth=0,
+                     rowheight=26, font=(FONT, 12))
         s.configure("T.Treeview.Heading",
-                     background=ZONE_HI, foreground=DIM,
+                     background=CARD_HI, foreground=DIM,
                      relief="flat", font=(FONT, 11))
         s.map("T.Treeview.Heading",
-              background=[("active", ZONE_HI), ("pressed", ZONE_HI)],
+              background=[("active", CARD_HI), ("pressed", CARD_HI)],
               foreground=[("active", DIM),     ("pressed", DIM)],
               relief=[("active", "flat"),      ("pressed", "flat")])
         s.map("T.Treeview",
-              background=[("selected", BTN_CLR)],
+              background=[("selected", ACCENT)],
               foreground=[("selected", "white")])
+
         s.configure("Primary.TButton",
-                     background=BTN_CLR, foreground="white",
+                     background=ACCENT, foreground="white",
                      font=(FONT, 13, "bold"), relief="flat", padding=(20, 9))
         s.map("Primary.TButton",
-              background=[("active", "#0070d6"), ("disabled", ZONE_HI)],
+              background=[("active", ACCENT_HI), ("disabled", CARD_HI)],
               foreground=[("disabled", DIM)])
         s.configure("Secondary.TButton",
-                     background=BTN2_CLR, foreground=FG,
+                     background=CARD_HI, foreground=FG,
                      font=(FONT, 12), relief="flat", padding=(14, 9))
         s.map("Secondary.TButton",
-              background=[("active", "#4a4a4e"), ("disabled", "#2a2a2c")],
+              background=[("active", "#3d3d45"), ("disabled", "#26262a")],
               foreground=[("disabled", DIM)])
+
+        s.configure("Dark.Vertical.TScrollbar",
+                     background=CARD_HI, troughcolor=CARD,
+                     borderwidth=0, arrowsize=0, relief="flat")
+        s.map("Dark.Vertical.TScrollbar",
+              background=[("active", BORDER)])
+
+        s.configure("Acc.Horizontal.TProgressbar",
+                     background=ACCENT, troughcolor=CARD,
+                     borderwidth=0, thickness=3)
 
     # ── Layout ────────────────────────────────────────────────────────────
 
     def _build(self):
-        # Logo header
-        logo_path = Path(__file__).parent / "logo.png"
-        self._logo_img = None
-        if logo_path.exists():
-            try:
-                from PIL import Image, ImageTk
-                img = Image.open(str(logo_path)).convert("RGBA")
-                # Remove black/near-black background
-                try:
-                    import numpy as np
-                    arr = np.array(img)
-                    mask = (arr[:,:,0] < 30) & (arr[:,:,1] < 30) & (arr[:,:,2] < 30)
-                    arr[mask, 3] = 0
-                    img = Image.fromarray(arr)
-                except ImportError:
-                    data = [(r, g, b, 0) if r < 30 and g < 30 and b < 30 else (r, g, b, a)
-                            for r, g, b, a in img.getdata()]
-                    img.putdata(data)
-                img = img.resize((110, 110), Image.LANCZOS)
-                self._logo_img = ImageTk.PhotoImage(img)
-                tk.Label(self.root, image=self._logo_img,
-                         bg=BG, pady=10).pack()
-            except Exception:
-                pass
+        # Header: logo + title side by side
+        header = tk.Frame(self.root, bg=BG)
+        header.pack(fill="x", padx=18, pady=(14, 6))
+
+        self._logo_img = self._load_logo(44)
+        if self._logo_img:
+            tk.Label(header, image=self._logo_img, bg=BG).pack(side="left")
+
+        titles = tk.Frame(header, bg=BG)
+        titles.pack(side="left", padx=(10, 0))
+        tk.Label(titles, text="RAR Extractor",
+                 font=(FONT, 16, "bold"), bg=BG, fg=FG,
+                 anchor="w").pack(fill="x")
+        tk.Label(titles, text="Extract archives next to the original file",
+                 font=(FONT, 10), bg=BG, fg=DIM,
+                 anchor="w").pack(fill="x")
 
         # Drop zone
-        self.zone = tk.Label(
-            self.root,
-            text="Drop RAR files here  —  or click to browse",
-            font=(FONT, 13), bg=ZONE_BG, fg=DIM,
-            cursor="hand2", pady=16,
-        )
-        self.zone.pack(fill="x", padx=14, pady=(0, 8))
-        self.zone.bind("<Button-1>", self._browse)
+        self.zone = DropZone(self.root, command=self._browse)
+        self.zone.pack(fill="x", padx=14, pady=(6, 8))
 
         # Treeview
         frame = tk.Frame(self.root, bg=BG)
@@ -527,13 +636,24 @@ class App:
         self.tree.heading("#0",    text="Name",  anchor="w")
         self.tree.heading("right", text="",      anchor="e")
         self.tree.column("#0",    stretch=True, minwidth=200)
-        self.tree.column("right", width=140, anchor="e", stretch=False)
+        self.tree.column("right", width=150, anchor="e", stretch=False)
+        self.tree.tag_configure("ok",  foreground=OK_CLR)
+        self.tree.tag_configure("err", foreground=ERR_CLR)
+        self.tree.tag_configure("dim", foreground=DIM)
         self.tree.bind("<Double-1>", self._on_tree_double_click)
+        for seq in ("<Button-2>", "<Button-3>", "<Control-Button-1>"):
+            self.tree.bind(seq, self._on_tree_context)
 
-        sb = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
+        sb = ttk.Scrollbar(frame, orient="vertical",
+                           style="Dark.Vertical.TScrollbar",
+                           command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.tree.pack(side="left", fill="both", expand=True)
+
+        # Progress bar (hidden until extraction starts)
+        self.progress = ttk.Progressbar(self.root, mode="indeterminate",
+                                        style="Acc.Horizontal.TProgressbar")
 
         # Bottom bar
         bar = tk.Frame(self.root, bg=BG)
@@ -565,35 +685,49 @@ class App:
         )
         self.extract_btn.pack(side="right")
 
+    def _load_logo(self, size: int):
+        logo_path = Path(__file__).parent / "logo.png"
+        if not logo_path.exists():
+            return None
+        try:
+            from PIL import Image, ImageChops, ImageTk
+            img = Image.open(str(logo_path)).convert("RGBA")
+            # Make near-black background transparent: where max(R,G,B) < 30
+            r, g, b, a = img.split()
+            brightest = ImageChops.lighter(ImageChops.lighter(r, g), b)
+            opaque = brightest.point(lambda v: 0 if v < 30 else 255)
+            img.putalpha(ImageChops.darker(a, opaque))
+            img = img.resize((size, size), Image.LANCZOS)
+            return ImageTk.PhotoImage(img)
+        except Exception:
+            return None
+
     # ── Open With / Apple Events ──────────────────────────────────────────
 
     def _open_document(self, *args):
-        """Called by macOS when files are opened via 'Open With' in Finder."""
-        rars = [Path(p) for p in args if Path(p).suffix.lower() == ".rar" and Path(p).exists()]
-        if rars:
+        archives = [Path(p) for p in args if is_archive(Path(p))]
+        if archives:
             self.root.lift()
             self.root.focus_force()
-            self._add_files(rars)
+            self._add_files(archives)
 
     # ── Drag & browse ─────────────────────────────────────────────────────
 
-    def _highlight(self, on: bool):
-        self.zone.configure(bg=ZONE_HI if on else ZONE_BG)
-
     def _on_drop(self, event):
-        self._highlight(False)
+        self.zone.set_active(False)
         paths = [Path(f.strip("{}")) for f in self.root.tk.splitlist(event.data)]
-        rars  = [p for p in paths if p.suffix.lower() == ".rar" and p.exists()]
-        if rars:
-            self._add_files(rars)
+        archives = [p for p in paths if is_archive(p)]
+        if archives:
+            self._add_files(archives)
 
-    def _browse(self, _=None):
+    def _browse(self):
         files = filedialog.askopenfilenames(
-            title="Select RAR files",
-            filetypes=[("RAR files", "*.rar *.RAR"), ("All files", "*.*")],
+            title="Select archives",
+            filetypes=[("Archives", "*.rar *.RAR *.zip *.ZIP *.7z *.7Z"),
+                       ("All files", "*.*")],
         )
         if files:
-            self._add_files([Path(f) for f in files])
+            self._add_files([Path(f) for f in files if is_archive(Path(f))])
 
     # ── Queue ─────────────────────────────────────────────────────────────
 
@@ -604,7 +738,8 @@ class App:
         for path in new:
             iid = self.tree.insert("", "end",
                                    text=f"📦  {path.name}",
-                                   values=("Reading …",), open=False)
+                                   values=("Reading …",), open=False,
+                                   tags=("dim",))
             self._queue[path] = iid
         self._refresh_buttons()
         for path in new:
@@ -617,6 +752,27 @@ class App:
         self._refresh_buttons()
         self._set_status("Ready", DIM)
 
+    def _remove_path(self, path: Path):
+        iid = self._queue.pop(path, None)
+        self._extracted.pop(path, None)
+        if iid:
+            self.tree.delete(iid)
+        self._refresh_buttons()
+
+    def _on_tree_context(self, event):
+        if self._extracting:
+            return
+        iid = self.tree.identify_row(event.y)
+        if not iid or self.tree.parent(iid):
+            return
+        path = next((p for p, i in self._queue.items() if i == iid), None)
+        if path is None:
+            return
+        menu = tk.Menu(self.root, tearoff=0)
+        menu.add_command(label=f"Remove “{path.name}”",
+                         command=lambda: self._remove_path(path))
+        menu.tk_popup(event.x_root, event.y_root)
+
     def _load_entries(self, path: Path):
         entries = list_archive(path)
         self.root.after(0, lambda: self._populate_path(path, entries))
@@ -628,7 +784,7 @@ class App:
         for child in self.tree.get_children(iid):
             self.tree.delete(child)
         if entries is None:
-            self.tree.item(iid, values=("Could not read archive",))
+            self.tree.item(iid, values=("Could not read archive",), tags=("err",))
             return
 
         dir_nodes: dict[str, str] = {}
@@ -646,6 +802,7 @@ class App:
             return node
 
         file_count = 0
+        total_size = 0
         for entry in entries:
             name: str = entry.get("XADFileName", "")
             is_dir    = entry.get("XADIsDirectory", False)
@@ -660,46 +817,51 @@ class App:
                 self.tree.insert(parent, "end",
                                  text=f"📄  {parts[-1]}", values=(fmt_size(size),))
                 file_count += 1
+                total_size += size or 0
 
         noun = "file" if file_count == 1 else "files"
-        self.tree.item(iid, values=(f"{file_count} {noun}",), open=True)
+        self.tree.item(iid, values=(f"{file_count} {noun} · {fmt_size(total_size)}",),
+                       open=True, tags=())
         self._refresh_buttons()
 
     # ── Extract ───────────────────────────────────────────────────────────
 
     def _extract_all(self):
         paths = list(self._queue.keys())
-        if not paths:
+        if not paths or self._extracting:
             return
+        self._extracting = True
         self.extract_btn.configure(state="disabled")
         self.clear_btn.configure(state="disabled")
         n = len(paths)
-        self._set_status(f"Extracting {n} {'files' if n > 1 else 'file'} …", DIM)
+        self._set_status(f"Extracting {n} {'archives' if n > 1 else 'archive'} …", DIM)
+        self.progress.pack(fill="x", padx=14, pady=(6, 0))
+        self.progress.start(12)
 
         done = {"n": 0, "ok": 0}
 
         def run(path: Path):
             iid = self._queue.get(path)
             if iid:
-                self.root.after(0, lambda i=iid: self.tree.item(i, values=("⏳ Extracting …",)))
+                self.root.after(0, lambda i=iid: self.tree.item(
+                    i, values=("Extracting …",), tags=("dim",)))
 
-            ok, msg, needs_pw, out_dir = extract_rar(path)
+            ok, msg, needs_pw, out_dir = extract_archive(path)
 
-            # Password retry
             if not ok and needs_pw:
                 pwd = self._ask_password(path.name)
                 if pwd:
-                    ok, msg, _, out_dir = extract_rar(path, password=pwd)
+                    ok, msg, _, out_dir = extract_archive(path, password=pwd)
 
             if iid:
                 label = f"✓  {msg}" if ok else f"✗  {msg}"
-                self.root.after(0, lambda i=iid, l=label: self.tree.item(i, values=(l,)))
-
-            if ok and out_dir:
-                with self._lock:
-                    self._extracted[path] = out_dir
+                tag = "ok" if ok else "err"
+                self.root.after(0, lambda i=iid, l=label, t=tag:
+                                self.tree.item(i, values=(l,), tags=(t,)))
 
             with self._lock:
+                if ok and out_dir:
+                    self._extracted[path] = out_dir
                 done["n"] += 1
                 if ok:
                     done["ok"] += 1
@@ -710,8 +872,11 @@ class App:
             threading.Thread(target=run, args=(p,), daemon=True).start()
 
     def _on_all_done(self, ok: int, total: int):
+        self._extracting = False
+        self.progress.stop()
+        self.progress.pack_forget()
         if ok == total:
-            self._set_status(f"✓  {ok} {'files' if ok > 1 else 'file'} extracted", OK_CLR)
+            self._set_status(f"✓  {ok} {'archives' if ok > 1 else 'archive'} extracted", OK_CLR)
         else:
             self._set_status(f"✓ {ok} extracted  ✗ {total - ok} failed", ERR_CLR)
         self._refresh_buttons()
@@ -719,16 +884,12 @@ class App:
     # ── Password ──────────────────────────────────────────────────────────
 
     def _ask_password(self, filename: str) -> str | None:
-        """Ask for a password on the main thread and return it."""
-        self.root.after(0, lambda: self._pw_queue.put(
-            simpledialog.askstring(
-                "Password required",
-                f"Enter password for:\n{filename}",
-                show="*",
-                parent=self.root,
-            )
-        ))
-        return self._pw_queue.get()
+        """Prompt on the main thread; serialized so concurrent archives
+        can't receive each other's passwords."""
+        with self._pw_lock:
+            self.root.after(0, lambda: self._pw_queue.put(
+                PasswordDialog(self.root, filename).result))
+            return self._pw_queue.get()
 
     # ── Reveal in Finder ──────────────────────────────────────────────────
 
@@ -740,7 +901,7 @@ class App:
     def _on_tree_double_click(self, event):
         iid = self.tree.identify_row(event.y)
         if not iid or self.tree.parent(iid):
-            return  # only top-level rows
+            return
         for path, row_iid in self._queue.items():
             if row_iid == iid and path in self._extracted:
                 out_dir = self._extracted[path]
@@ -751,9 +912,7 @@ class App:
 
     def _refresh_buttons(self):
         n = len(self._queue)
-        has_extracted = bool(self._extracted)
 
-        # Extract button
         if n == 0:
             self.extract_btn.configure(state="disabled", text="Extract")
         else:
@@ -762,14 +921,14 @@ class App:
                 self.tree.item(iid, "values") not in [("Reading …",), ()]
                 for iid in self._queue.values()
             )
-            self.extract_btn.configure(text=label,
-                                       state="normal" if ready else "disabled")
+            self.extract_btn.configure(
+                text=label,
+                state="normal" if (ready and not self._extracting) else "disabled")
 
-        # Clear button
-        self.clear_btn.configure(state="normal" if n > 0 else "disabled")
-
-        # Reveal button
-        self.reveal_btn.configure(state="normal" if has_extracted else "disabled")
+        self.clear_btn.configure(
+            state="normal" if (n > 0 and not self._extracting) else "disabled")
+        self.reveal_btn.configure(
+            state="normal" if self._extracted else "disabled")
 
     def _set_status(self, msg: str, color: str = DIM):
         self.root.after(0, lambda: self.status_lbl.configure(text=msg, fg=color))
